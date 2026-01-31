@@ -11,9 +11,11 @@ async function bootstrap() {
     .setTitle('Hackathon API')
     .setDescription('API docs')
     .setVersion('1.0')
+    .addBearerAuth() // 토큰 인증
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
+  
   SwaggerModule.setup('docs', app, document);
 
   await app.listen(3000);
