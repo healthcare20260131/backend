@@ -21,6 +21,8 @@ model User {
   createdAt DateTime @default(now())
   
   isOnboarded Boolean @default(false) 
+
+  smokingStartDate DateTime?      @default(now())
   
   surveys   Survey[]
 

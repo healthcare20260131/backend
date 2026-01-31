@@ -42,12 +42,22 @@ export class CallController {
   }
 
   /**
-   * 4. 나의 통화 히스토리 조회
+   * 6. 금연 지속 시간 조회 (일, 시간, 분)
    */
   @UseGuards(JwtAuthGuard)
-  @Get('history')
-  @ApiOperation({ summary: '나의 통화 히스토리 조회' })
-  async getCallHistory(@Request() req: any) {
-    return this.callService.getCallHistory(req.user.id);
+  @Get('smoking-duration')
+  @ApiOperation({ summary: '금연 지속 시간 조회 (일, 시간, 분)' })
+  async getSmokingDuration(@Request() req: any) {
+    return this.callService.getSmokingDuration(req.user.id);
+  }
+
+  /**
+   * 7. 금연 시작일 초기화 (실패 시 리셋)
+   */
+  @UseGuards(JwtAuthGuard)
+  @Post('smoking-reset')
+  @ApiOperation({ summary: '금연 시작일 초기화 (리셋)' })
+  async resetSmokingDate(@Request() req: any) {
+    return this.callService.resetSmokingStartDate(req.user.id);
   }
 }

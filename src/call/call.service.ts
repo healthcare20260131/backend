@@ -68,7 +68,6 @@ export class CallService {
       data: {
         callLogId: dto.callLogId,
         senderId: senderId,
-        // [주의] receiverId가 실제 DB에 있는 유저인지 확인이 필요합니다.
         receiverId: dto.receiverId, 
         content: dto.content,
         senderName: dto.senderName,
@@ -110,6 +109,17 @@ export class CallService {
   }
 
   /**
+ * 5. 누적 통화(노담) 횟수 조회
+ */
+async getCallCount(userId: number) {
+  const count = await this.prisma.callResult.count({
+    where: { userId: userId },
+  });
+  
+  return { totalNoDamCount: count };
+}
+
+  /**
    * 통화 후 기분 피드백 저장
    */
   async saveCallFeedback(userId: number, dto: CallFeedbackDto) {
@@ -122,6 +132,41 @@ export class CallService {
           createdAt: new Date().toISOString(),
         },
       },
+    });
+  }
+
+  /**
+   * 6. 금연 지속 시간 계산 (일, 시간, 분)
+   */
+  async getSmokingDuration(userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { smokingStartDate: true },
+    });
+
+    if (!user || !user.smokingStartDate) {
+      return { days: 0, hours: 0, minutes: 0 };
+    }
+
+    const now = new Date();
+    const startDate = new Date(user.smokingStartDate);
+    const diffMs = now.getTime() - startDate.getTime(); // 밀리초 차이
+
+    // 시간 계산 (객관적 수치)
+    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diffMs / (1000 * 60 * 60)) % 24);
+    const minutes = Math.floor((diffMs / (1000 * 60)) % 60);
+
+    return { days, hours, minutes };
+  }
+
+  /**
+   * 7. 금연 시작일 초기화 (실패 시 리셋)
+   */
+  async resetSmokingStartDate(userId: number) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { smokingStartDate: new Date() }, // 현재 시간으로 리셋
     });
   }
 
@@ -156,7 +201,6 @@ export class CallService {
 
   getRoom(roomId: string) { return this.rooms.get(roomId); }
 
-<<<<<<< HEAD
   roomExists(roomId: string): boolean {
     return this.rooms.has(roomId);
   }
@@ -172,11 +216,7 @@ export class CallService {
   }
 
   // 자동 매칭: 대기 room 있으면 참가, 없으면 생성
-  autoMatch(user: {
-    odId: string;
-    email: string;
-    socketId: string;
-  }): { success: boolean; roomId: string; isCreator: boolean } {
+  autoMatch(user: UserInfo): { success: boolean; roomId: string; isCreator: boolean } {
     const availableRoom = this.findAvailableRoom();
 
     if (availableRoom) {
@@ -191,9 +231,6 @@ export class CallService {
   }
 
   getRoomBySocketId(socketId: string): Room | undefined {
-=======
-  getRoomBySocketId(socketId: string) {
->>>>>>> dd44dd3 (Fix: complete call result API and resolve DB unique constraints)
     for (const room of this.rooms.values()) {
       if (room.users.has(socketId)) return room;
     }
