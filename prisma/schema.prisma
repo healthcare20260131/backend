@@ -19,4 +19,15 @@ model User {
   password  String            // 암호화된 비밀번호 저장
   name      String?
   createdAt DateTime @default(now())
+  surveys Survey[]
+}
+
+model Survey {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  
+  data      Json     
+  
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
 }
