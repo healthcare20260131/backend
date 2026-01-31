@@ -1,3 +1,4 @@
+// 파일 위치: src/app.controller.ts
 import { Controller, Get } from '@nestjs/common';
 import { AppService } from './app.service';
 
@@ -8,10 +9,5 @@ export class AppController {
   @Get()
   getHello(): string {
     return this.appService.getHello();
-  }
-
-  @Get('/health')
-  health() {
-    return { ok: true };
   }
 }
