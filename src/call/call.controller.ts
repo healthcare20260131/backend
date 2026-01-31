@@ -1,20 +1,53 @@
-import { Controller, Post, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards, Request } from '@nestjs/common';
 import { CallService } from './call.service';
-import { CallFeedbackDto } from './dto/call-feedback.dto';
+import { CreateCallResultDto } from './dto/call-result.dto';
+import { SendCheerDto } from './dto/send-cheer.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiOperation, ApiTags, ApiBearerAuth } from '@nestjs/swagger'; // 1. ApiBearerAuth 추가
 
-@ApiTags('Call')
-@ApiBearerAuth()
+@ApiTags('통화 및 응원 (Call)')
+@ApiBearerAuth() // 2. 여기에 반드시 추가해야 Swagger에서 토큰을 실어 보냅니다!
 @Controller('call')
 export class CallController {
   constructor(private readonly callService: CallService) {}
 
-  @Post('feedback')
+  /**
+   * 1. 통화 종료 후 상세 결과 저장
+   */
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: '통화 후 기분 피드백 저장' })
-  async saveFeedback(@Body() dto: CallFeedbackDto, @Req() req) {
-    // req.user.id는 JwtAuthGuard가 토큰에서 추출해준 유저 ID입니다.
-    return this.callService.saveCallFeedback(req.user.id, dto);
+  @Post('result')
+  @ApiOperation({ summary: '통화 상세 결과 저장' })
+  async saveCallResult(@Request() req: any, @Body() dto: CreateCallResultDto) {
+    return this.callService.saveResult(req.user.id, dto);
+  }
+
+  /**
+   * 2. 통화 종료 후 상대방에게 응원 메시지 발송
+   */
+  @UseGuards(JwtAuthGuard)
+  @Post('cheer')
+  @ApiOperation({ summary: '상대방에게 응원 메시지 발송' })
+  async sendCheerMessage(@Request() req: any, @Body() dto: SendCheerDto) {
+    return this.callService.saveCheerMessage(req.user.id, dto);
+  }
+
+  /**
+   * 3. 받은 응원 메시지 목록 조회
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('cheer-list')
+  @ApiOperation({ summary: '내가 받은 응원 메시지 목록 조회' })
+  async getMyCheers(@Request() req: any) {
+    return this.callService.getReceivedCheers(req.user.id);
+  }
+
+  /**
+   * 4. 나의 통화 히스토리 조회
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('history')
+  @ApiOperation({ summary: '나의 통화 히스토리 조회' })
+  async getCallHistory(@Request() req: any) {
+    return this.callService.getCallHistory(req.user.id);
   }
 }

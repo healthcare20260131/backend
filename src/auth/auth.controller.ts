@@ -1,7 +1,7 @@
-// src/auth/auth.controller.ts
 import { Controller, Post, Body, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthDto } from './auth.dto'; 
+import { LoginDto } from './dto/login.dto'; // 1. LoginDto 임포트
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 @ApiTags('인증 (Auth)')
@@ -26,16 +26,17 @@ export class AuthController {
     schema: {
       example: {
         access_token: 'eyJhbGciOiJIUzI1NiIsInR...',
-        isOnboarded: false
+        isOnboarded: false,
+        name: '홍길동'
       }
     }
   })
-  async login(@Body() body: AuthDto) {
+  // 2. 파라미터 타입을 LoginDto로 변경
+  async login(@Body() body: LoginDto) {
     const user = await this.authService.validateUser(body.email, body.password);
     if (!user) {
       throw new UnauthorizedException('이메일이나 비밀번호가 틀렸습니다.');
     }
-    // 서비스에서 수정된 login 메서드가 호출되어 { access_token, isOnboarded }가 반환됨.
     return this.authService.login(user);
   }
 }

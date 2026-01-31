@@ -15,23 +15,80 @@ model Note {
 
 model User {
   id        Int      @id @default(autoincrement())
-  email     String   @unique  // 로그인 아이디로 사용
-  password  String            // 암호화된 비밀번호 저장
-  name      String?
+  email     String   @unique
+  password  String
+  name      String            // 닉네임 (필수)
   createdAt DateTime @default(now())
   
-  // 사용자가 온보딩 설문을 완료했는지 여부를 저장합니다.
   isOnboarded Boolean @default(false) 
   
   surveys   Survey[]
+
+  // 통화 참여 및 메시지 관계
+  callsAsUser1  CallLog[] @relation("User1Calls")
+  callsAsUser2  CallLog[] @relation("User2Calls")
+  
+  callResults   CallResult[]    // 내가 기록한 통화 리스트
+  sentCheers    CheerMessage[]  @relation("SentCheers")
+  receivedCheers CheerMessage[] @relation("ReceivedCheers") // 내가 받은 메시지 리스트
 }
 
 model Survey {
   id        Int      @id @default(autoincrement())
   createdAt DateTime @default(now())
-  
   data      Json     
-  
   userId    Int
   user      User     @relation(fields: [userId], references: [id])
+}
+
+// 매칭 세션 자체를 관리하는 로그
+model CallLog {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+
+  user1Id   Int
+  user2Id   Int
+  user1     User     @relation("User1Calls", fields: [user1Id], references: [id])
+  user2     User     @relation("User2Calls", fields: [user2Id], references: [id])
+
+  callResults   CallResult[]
+  cheerMessages CheerMessage[]
+}
+
+// 1. 통화 기록 저장 (시간, 상대방 닉네임, 기분, 날짜)
+model CallResult {
+  id            Int      @id @default(autoincrement())
+  callDate      DateTime @default(now()) // 통화 날짜
+  
+  callDuration  Int      // 통화 시간 (초 단위)
+  opponentName  String   // 통화 당시 상대방 닉네임
+  mood          String   // 선택한 기분
+  
+  userId        Int
+  user          User     @relation(fields: [userId], references: [id])
+
+  callLogId     Int
+  callLog       CallLog  @relation(fields: [callLogId], references: [id])
+
+  @@unique([callLogId, userId]) // 한 통화에 대해 내 기록은 하나만 존재
+}
+
+// 2. 받은 메시지 저장 (상대방 닉네임, 내용, 받은 날짜)
+model CheerMessage {
+  id            Int      @id @default(autoincrement())
+  content       String   @db.VarChar(200) // 응원 내용
+  receivedDate  DateTime @default(now())  // 받은 날짜
+
+  senderName    String   // 보낸 사람의 당시 닉네임 (상대방 닉네임)
+  
+  senderId      Int
+  sender        User     @relation("SentCheers", fields: [senderId], references: [id])
+
+  receiverId    Int
+  receiver      User     @relation("ReceivedCheers", fields: [receiverId], references: [id])
+
+  callLogId     Int
+  callLog       CallLog  @relation(fields: [callLogId], references: [id])
+
+  @@unique([callLogId, senderId]) // 한 통화당 응원은 한 번만 가능
 }
