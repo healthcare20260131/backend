@@ -11,9 +11,10 @@ import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 export class SurveyController {
   constructor(private readonly prisma: PrismaService) {}
 
-  @ApiOperation({ 
-    summary: '설문조사 제출', 
-    description: '설문 결과를 저장하고 해당 유저의 온보딩 상태를 완료(true)로 변경합니다.' 
+  @ApiOperation({
+    summary: '설문조사 제출',
+    description:
+      '설문 결과를 저장하고 해당 유저의 온보딩 상태를 완료(true)로 변경합니다.',
   })
   @UseGuards(AuthGuard('jwt'))
   @Post()

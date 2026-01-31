@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CallFeedbackDto } from './dto/call-feedback.dto';
@@ -18,6 +18,7 @@ interface Room {
 
 @Injectable()
 export class CallService {
+  private readonly logger = new Logger(CallService.name);
   private rooms = new Map<string, Room>();
 
   constructor(private readonly prisma: PrismaService) {}
@@ -27,6 +28,9 @@ export class CallService {
    * upsert를 활용해 부모(CallLog)가 없을 경우 자동 생성하여 500 에러 방지
    */
   async saveResult(userId: number, dto: CreateCallResultDto) {
+    this.logger.log(
+      `saveResult 호출 - userId: ${userId}, dto: ${JSON.stringify(dto)}`,
+    );
     // CallLog가 없으면 생성, 있으면 그대로 둠
     await this.prisma.callLog.upsert({
       where: { id: dto.callLogId },
@@ -53,6 +57,9 @@ export class CallService {
    * 2. 응원 메시지 따로 저장
    */
   async saveCheerMessage(senderId: number, dto: SendCheerDto) {
+    this.logger.log(
+      `saveCheerMessage 호출 - senderId: ${senderId}, dto: ${JSON.stringify(dto)}`,
+    );
     // [보완] CallLog가 없으면 자동 생성
     await this.prisma.callLog.upsert({
       where: { id: dto.callLogId },
@@ -68,7 +75,7 @@ export class CallService {
       data: {
         callLogId: dto.callLogId,
         senderId: senderId,
-        receiverId: dto.receiverId, 
+        receiverId: dto.receiverId,
         content: dto.content,
         senderName: dto.senderName,
       },
@@ -79,6 +86,7 @@ export class CallService {
    * 3. 받은 응원 메시지 목록 조회
    */
   async getReceivedCheers(userId: number) {
+    this.logger.log(`getReceivedCheers 호출 - userId: ${userId}`);
     return this.prisma.cheerMessage.findMany({
       where: { receiverId: userId },
       orderBy: { receivedDate: 'desc' },
@@ -95,6 +103,7 @@ export class CallService {
    * 4. 나의 통화 히스토리 조회
    */
   async getCallHistory(userId: number) {
+    this.logger.log(`getCallHistory 호출 - userId: ${userId}`);
     return this.prisma.callResult.findMany({
       where: { userId: userId },
       orderBy: { callDate: 'desc' },
@@ -109,20 +118,23 @@ export class CallService {
   }
 
   /**
- * 5. 누적 통화(노담) 횟수 조회
- */
-async getCallCount(userId: number) {
-  const count = await this.prisma.callResult.count({
-    where: { userId: userId },
-  });
-  
-  return { totalNoDamCount: count };
-}
+   * 5. 누적 통화(노담) 횟수 조회
+   */
+  async getCallCount(userId: number) {
+    const count = await this.prisma.callResult.count({
+      where: { userId: userId },
+    });
+
+    return { totalNoDamCount: count };
+  }
 
   /**
    * 통화 후 기분 피드백 저장
    */
   async saveCallFeedback(userId: number, dto: CallFeedbackDto) {
+    this.logger.log(
+      `saveCallFeedback 호출 - userId: ${userId}, dto: ${JSON.stringify(dto)}`,
+    );
     return this.prisma.survey.create({
       data: {
         user: { connect: { id: userId } },
@@ -186,7 +198,8 @@ async getCallCount(userId: number) {
     }
     const room = this.rooms.get(roomId);
     if (!room) return { success: false, roomId: '', error: 'Room not found' };
-    if (room.users.size >= 2) return { success: false, roomId: '', error: 'Room is full' };
+    if (room.users.size >= 2)
+      return { success: false, roomId: '', error: 'Room is full' };
     room.users.set(user.socketId, user);
     return { success: true, roomId };
   }
@@ -199,7 +212,9 @@ async getCallCount(userId: number) {
     }
   }
 
-  getRoom(roomId: string) { return this.rooms.get(roomId); }
+  getRoom(roomId: string) {
+    return this.rooms.get(roomId);
+  }
 
   roomExists(roomId: string): boolean {
     return this.rooms.has(roomId);
@@ -216,7 +231,11 @@ async getCallCount(userId: number) {
   }
 
   // 자동 매칭: 대기 room 있으면 참가, 없으면 생성
-  autoMatch(user: UserInfo): { success: boolean; roomId: string; isCreator: boolean } {
+  autoMatch(user: { odId: string; email: string; socketId: string }): {
+    success: boolean;
+    roomId: string;
+    isCreator: boolean;
+  } {
     const availableRoom = this.findAvailableRoom();
 
     if (availableRoom) {

@@ -12,4 +12,4 @@ services:
       - mysql_data:/var/lib/mysql
 
 volumes:
-  mysql_data:r
+  mysql_data:
