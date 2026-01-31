@@ -1,5 +1,6 @@
 datasource db {
   provider = "mysql"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -9,5 +10,13 @@ generator client {
 model Note {
   id        Int      @id @default(autoincrement())
   title     String
+  createdAt DateTime @default(now())
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique  // 로그인 아이디로 사용
+  password  String            // 암호화된 비밀번호 저장
+  name      String?
   createdAt DateTime @default(now())
 }
