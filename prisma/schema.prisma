@@ -19,7 +19,11 @@ model User {
   password  String            // 암호화된 비밀번호 저장
   name      String?
   createdAt DateTime @default(now())
-  surveys Survey[]
+  
+  // 사용자가 온보딩 설문을 완료했는지 여부를 저장합니다.
+  isOnboarded Boolean @default(false) 
+  
+  surveys   Survey[]
 }
 
 model Survey {

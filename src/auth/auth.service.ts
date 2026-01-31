@@ -20,17 +20,22 @@ export class AuthService {
     return null;
   }
 
-  // 로그인 토큰 발급
+  // 로그인 토큰 발급 및 온보딩 상태 반환
   async login(user: any) {
     const payload = { email: user.email, sub: user.id };
+    
+    // 유저의 최신 상태를 DB에서 다시 한 번 확인
+    const currentUser = await this.usersService.findOne(user.email);
+
     return {
       access_token: this.jwtService.sign(payload),
+      // 프론트엔드에서 로그인 즉시 화면 이동을 결정할 수 있도록 추가
+      isOnboarded: currentUser?.isOnboarded ?? false,
     };
   }
 
   // 회원가입
   async signup(data: any) {
-    // 이미 존재하는 이메일인지 체크하는 로직 추후 추가 가능
     return this.usersService.createUser(data);
   }
 }
