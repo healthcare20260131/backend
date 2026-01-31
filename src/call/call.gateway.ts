@@ -51,6 +51,37 @@ export class CallGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   async handleConnection(socket: Socket) {}
 
+  @SubscribeMessage('check-room')
+  handleCheckRoom(
+    @MessageBody() data: { roomId: string },
+  ): { exists: boolean } {
+    const exists = this.callService.roomExists(data.roomId);
+    return { exists };
+  }
+
+  @SubscribeMessage('auto-match')
+  handleAutoMatch(
+    @ConnectedSocket() socket: Socket,
+  ): { success: boolean; roomId: string; isCreator: boolean } {
+    const result = this.callService.autoMatch({
+      odId: socket.data.id,
+      email: socket.data.email,
+      socketId: socket.id,
+    });
+
+    socket.join(result.roomId);
+
+    if (!result.isCreator) {
+      // 기존 대기자에게 상대방 입장 알림
+      socket.to(result.roomId).emit('user-joined', {
+        odId: socket.data.id,
+        email: socket.data.email,
+      });
+    }
+
+    return result;
+  }
+
   @SubscribeMessage('join-room')
   handleJoinRoom(
     @ConnectedSocket() socket: Socket,

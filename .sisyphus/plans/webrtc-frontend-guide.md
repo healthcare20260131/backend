@@ -92,9 +92,7 @@ const connectToSignaling = (token: string): Socket => {
     transports: ['websocket'],
   });
 
-  socket.on('connect', () => {
-    console.log('Signaling server connected');
-  });
+  socket.on('connect', () => {});
 
   socket.on('connect_error', (error) => {
     console.error('Connection failed:', error.message);
@@ -117,13 +115,9 @@ const createPeerConnection = (): RTCPeerConnection => {
 
   const pc = new RTCPeerConnection(config);
 
-  pc.oniceconnectionstatechange = () => {
-    console.log('ICE state:', pc.iceConnectionState);
-  };
+  pc.oniceconnectionstatechange = () => {};
 
-  pc.onconnectionstatechange = () => {
-    console.log('Connection state:', pc.connectionState);
-  };
+  pc.onconnectionstatechange = () => {};
 
   return pc;
 };
@@ -161,12 +155,9 @@ const startCall = async (socket: Socket, pc: RTCPeerConnection) => {
     }
 
     const roomId = response.roomId;
-    console.log('Room created:', roomId);
 
     // 2. 상대방이 들어오면 Offer 생성
     socket.on('user-joined', async (user: UserJoinedEvent) => {
-      console.log('User joined:', user.email);
-
       // 3. Offer 생성 및 전송
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -200,8 +191,6 @@ const joinCall = async (
       return;
     }
 
-    console.log('Joined room:', roomId);
-
     // 2. Offer 수신 시 Answer 생성
     socket.on('offer', async (data: SignalingMessage) => {
       await pc.setRemoteDescription(new RTCSessionDescription(data.sdp!));
@@ -214,6 +203,68 @@ const joinCall = async (
         sdp: answer,
       });
     });
+  });
+};
+```
+
+#### 단일 Connect 버튼 (권장) - 자동 매칭
+
+버튼 하나로 대기 중인 room에 자동 매칭. 대기 room이 없으면 새로 생성:
+
+```typescript
+interface AutoMatchResponse {
+  success: boolean;
+  roomId: string;
+  isCreator: boolean; // true: 대기 중 (Caller), false: 매칭됨 (Callee)
+}
+
+const autoMatch = async (socket: Socket, pc: RTCPeerConnection) => {
+  socket.emit('auto-match', {}, (response: AutoMatchResponse) => {
+    if (!response.success) {
+      console.error('Auto match failed');
+      return;
+    }
+
+    const { roomId, isCreator } = response;
+
+    if (isCreator) {
+      // Caller: 상대방 대기
+      setupCallerFlow(socket, pc, roomId);
+    } else {
+      // Callee: 바로 연결 시작
+      setupCalleeFlow(socket, pc, roomId);
+    }
+  });
+};
+
+// Caller: user-joined 이벤트 대기 후 Offer 전송
+const setupCallerFlow = (
+  socket: Socket,
+  pc: RTCPeerConnection,
+  roomId: string,
+) => {
+  socket.on('user-joined', async () => {
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    socket.emit('offer', { roomId, sdp: offer });
+  });
+
+  socket.on('answer', async (data: SignalingMessage) => {
+    await pc.setRemoteDescription(new RTCSessionDescription(data.sdp!));
+  });
+};
+
+// Callee: Offer 수신 후 Answer 전송
+const setupCalleeFlow = (
+  socket: Socket,
+  pc: RTCPeerConnection,
+  roomId: string,
+) => {
+  socket.on('offer', async (data: SignalingMessage) => {
+    await pc.setRemoteDescription(new RTCSessionDescription(data.sdp!));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    socket.emit('answer', { roomId, sdp: answer });
   });
 };
 ```
@@ -253,11 +304,8 @@ const setupRemoteStream = (
   videoElement: HTMLVideoElement,
 ) => {
   pc.ontrack = (event) => {
-    console.log('Remote track received:', event.track.kind);
-
     if (videoElement.srcObject !== event.streams[0]) {
       videoElement.srcObject = event.streams[0];
-      console.log('Remote stream attached');
     }
   };
 };
@@ -269,14 +317,17 @@ const setupRemoteStream = (
 
 ### Client → Server
 
-| Event           | Payload                 | Response              |
-| --------------- | ----------------------- | --------------------- |
-| `create-room`   | `{}`                    | `{ roomId, success }` |
-| `join-room`     | `{ roomId }`            | `{ success, error? }` |
-| `leave-room`    | `{ roomId }`            | -                     |
-| `offer`         | `{ roomId, sdp }`       | -                     |
-| `answer`        | `{ roomId, sdp }`       | -                     |
-| `ice-candidate` | `{ roomId, candidate }` | -                     |
+| Event           | Payload                 | Response                         |
+| --------------- | ----------------------- | -------------------------------- |
+| `auto-match`    | `{}`                    | `{ roomId, success, isCreator }` |
+| `check-room`    | `{ roomId }`            | `{ exists: boolean }`            |
+| `join-room`     | `{ roomId? }`           | `{ roomId, success, error? }`    |
+| `leave-room`    | `{ roomId }`            | -                                |
+| `offer`         | `{ roomId, sdp }`       | -                                |
+| `answer`        | `{ roomId, sdp }`       | -                                |
+| `ice-candidate` | `{ roomId, candidate }` | -                                |
+
+> **Note**: `auto-match` (권장) - 대기 중인 room 자동 매칭. `isCreator: true`면 대기 중, `false`면 매칭 완료
 
 ### Server → Client
 
@@ -314,8 +365,10 @@ interface UseWebRTCReturn {
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
   connectionState: string;
+  roomStatus: 'idle' | 'waiting' | 'connected';
+  roomId: string | null;
   connect: (token: string) => void;
-  createRoom: () => Promise<string>;
+  autoMatch: () => Promise<{ roomId: string; isCreator: boolean }>; // 권장: 자동 매칭
   joinRoom: (roomId: string) => Promise<void>;
   hangUp: () => void;
 }
@@ -324,6 +377,9 @@ export const useWebRTC = (): UseWebRTCReturn => {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [connectionState, setConnectionState] = useState('disconnected');
+  const [roomStatus, setRoomStatus] = useState<'idle' | 'created' | 'joined'>(
+    'idle',
+  );
 
   const socketRef = useRef<Socket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -389,8 +445,34 @@ export const useWebRTC = (): UseWebRTCReturn => {
       socketRef.current?.emit('join-room', { roomId }, (response: any) => {
         if (response.success) {
           roomIdRef.current = roomId;
+          setRoomStatus('joined');
           setupCalleeFlow();
           resolve();
+        } else {
+          reject(new Error(response.error));
+        }
+      });
+    });
+  }, []);
+
+  // 권장: 자동 매칭 - 대기 중인 room에 자동 참가, 없으면 생성
+  const autoMatch = useCallback(async (): Promise<{
+    roomId: string;
+    isCreator: boolean;
+  }> => {
+    return new Promise((resolve, reject) => {
+      socketRef.current?.emit('auto-match', {}, (response: any) => {
+        if (response.success) {
+          roomIdRef.current = response.roomId;
+          setRoomStatus(response.isCreator ? 'waiting' : 'connected');
+
+          if (response.isCreator) {
+            setupCallerFlow(); // 대기 중 (Caller)
+          } else {
+            setupCalleeFlow(); // 매칭됨 (Callee)
+          }
+
+          resolve({ roomId: response.roomId, isCreator: response.isCreator });
         } else {
           reject(new Error(response.error));
         }
@@ -416,8 +498,10 @@ export const useWebRTC = (): UseWebRTCReturn => {
     localStream,
     remoteStream,
     connectionState,
+    roomStatus,
+    roomId: roomIdRef.current,
     connect,
-    createRoom,
+    autoMatch, // 권장: 자동 매칭
     joinRoom,
     hangUp,
   };
@@ -438,15 +522,15 @@ export const VideoCall = () => {
     localStream,
     remoteStream,
     connectionState,
+    roomStatus,
+    roomId,
     connect,
-    createRoom,
-    joinRoom,
+    autoMatch,
     hangUp,
   } = useWebRTC();
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
-  const [roomId, setRoomId] = useState('');
   const [token, setToken] = useState('');
 
   // Attach streams to video elements
@@ -475,24 +559,19 @@ export const VideoCall = () => {
       />
       <button onClick={() => connect(token)}>Connect</button>
 
-      {/* Room Controls */}
+      {/* Room Controls - 자동 매칭 */}
       <div className="room-controls">
-        <button
-          onClick={async () => {
-            const id = await createRoom();
-            setRoomId(id);
-          }}
-        >
-          Create Room
-        </button>
-
-        <input
-          type="text"
-          placeholder="Room ID"
-          value={roomId}
-          onChange={(e) => setRoomId(e.target.value)}
-        />
-        <button onClick={() => joinRoom(roomId)}>Join Room</button>
+        <button onClick={autoMatch}>Start Call (Auto Match)</button>
+        {roomStatus !== 'idle' && (
+          <div className="room-info">
+            <span>Room: {roomId}</span>
+            <span className="room-status">
+              {roomStatus === 'waiting'
+                ? '⏳ Waiting for peer...'
+                : '✅ Connected'}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Video Elements */}
@@ -555,7 +634,91 @@ const config = {
 };
 ```
 
-### 4. Socket.IO 버전 매칭
+### 4. iOS 카메라/마이크 권한 설정
+
+#### React Native (Expo)
+
+```bash
+npx expo install expo-camera expo-av
+```
+
+`app.json`:
+
+```json
+{
+  "expo": {
+    "ios": {
+      "infoPlist": {
+        "NSCameraUsageDescription": "영상통화를 위해 카메라 접근이 필요합니다.",
+        "NSMicrophoneUsageDescription": "영상통화를 위해 마이크 접근이 필요합니다."
+      }
+    },
+    "android": {
+      "permissions": ["CAMERA", "RECORD_AUDIO"]
+    }
+  }
+}
+```
+
+#### React Native (Bare)
+
+`ios/[앱이름]/Info.plist`:
+
+```xml
+<key>NSCameraUsageDescription</key>
+<string>영상통화를 위해 카메라 접근이 필요합니다.</string>
+<key>NSMicrophoneUsageDescription</key>
+<string>영상통화를 위해 마이크 접근이 필요합니다.</string>
+```
+
+#### 런타임 권한 요청 (React Native)
+
+```typescript
+import { Camera } from 'expo-camera';
+import { Audio } from 'expo-av';
+
+const requestPermissions = async () => {
+  const { status: cameraStatus } = await Camera.requestCameraPermissionsAsync();
+  const { status: audioStatus } = await Audio.requestPermissionsAsync();
+
+  if (cameraStatus !== 'granted' || audioStatus !== 'granted') {
+    Alert.alert(
+      '권한 필요',
+      '영상통화를 위해 카메라와 마이크 권한이 필요합니다.',
+      [{ text: '설정으로 이동', onPress: () => Linking.openSettings() }],
+    );
+    return false;
+  }
+  return true;
+};
+```
+
+#### Swift (네이티브 iOS)
+
+`Info.plist`:
+
+```xml
+<key>NSCameraUsageDescription</key>
+<string>영상통화를 위해 카메라 접근이 필요합니다.</string>
+<key>NSMicrophoneUsageDescription</key>
+<string>영상통화를 위해 마이크 접근이 필요합니다.</string>
+```
+
+```swift
+import AVFoundation
+
+func requestPermissions() {
+    AVCaptureDevice.requestAccess(for: .video) { granted in
+        if granted {
+            AVCaptureDevice.requestAccess(for: .audio) { audioGranted in
+                // 권한 처리
+            }
+        }
+    }
+}
+```
+
+### 5. Socket.IO 버전 매칭
 
 백엔드의 socket.io 버전과 클라이언트 버전을 맞춰야 합니다:
 

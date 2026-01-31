@@ -84,6 +84,39 @@ export class CallService {
     return this.rooms.get(roomId);
   }
 
+  roomExists(roomId: string): boolean {
+    return this.rooms.has(roomId);
+  }
+
+  // 대기 중인 room (1명만 있는) 찾기
+  findAvailableRoom(): Room | undefined {
+    for (const room of this.rooms.values()) {
+      if (room.users.size === 1) {
+        return room;
+      }
+    }
+    return undefined;
+  }
+
+  // 자동 매칭: 대기 room 있으면 참가, 없으면 생성
+  autoMatch(user: {
+    odId: string;
+    email: string;
+    socketId: string;
+  }): { success: boolean; roomId: string; isCreator: boolean } {
+    const availableRoom = this.findAvailableRoom();
+
+    if (availableRoom) {
+      availableRoom.users.set(user.socketId, user);
+      return { success: true, roomId: availableRoom.id, isCreator: false };
+    }
+
+    const newRoomId = this.createRoom();
+    const room = this.rooms.get(newRoomId)!;
+    room.users.set(user.socketId, user);
+    return { success: true, roomId: newRoomId, isCreator: true };
+  }
+
   getRoomBySocketId(socketId: string): Room | undefined {
     for (const room of this.rooms.values()) {
       if (room.users.has(socketId)) {
